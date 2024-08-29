@@ -23,6 +23,15 @@ Used to specify logpath. Default is same folder as Winget-Autoupdate project
 Adds the app to the Winget-AutoUpdate White List. More info: https://github.com/Romanitho/Winget-AutoUpdate
 If '-Uninstall' is used, it removes the app from WAU White List.
 
+.PARAMETER Source
+Used to specify the source winget should use. Default is "winget"
+
+.PARAMETER SourceArg
+The URL or UNC of the source. Only needed if Source is not "winget".
+
+.PARAMETER SourceType
+The type of source. Only needed if Source is not "winget". If it's empty it uses default value "Microsoft.PreIndexed.Package".
+
 .EXAMPLE
 .\winget-install.ps1 -AppIDs 7zip.7zip
 
@@ -48,7 +57,10 @@ param(
     [Parameter(Mandatory = $False)] [Switch] $Uninstall,
     [Parameter(Mandatory = $False)] [String] $LogPath,
     [Parameter(Mandatory = $False)] [Switch] $WAUWhiteList,
-    [Parameter(Mandatory = $False)] [Switch] $AllowUpgrade
+    [Parameter(Mandatory = $False)] [Switch] $AllowUpgrade,
+    [Parameter(Mandatory = $False)] [String] $Source = "winget",
+    [Parameter(Mandatory=$false)] [String] $SourceArg,
+    [Parameter(Mandatory=$false)] [String] $SourceType = "Microsoft.PreIndexed.Package"
 )
 
 
@@ -223,7 +235,7 @@ function Install-Prerequisites {
 #Check if app is installed
 function Confirm-Install ($AppID) {
     #Get "Winget List AppID"
-    $InstalledApp = & $winget list --Id $AppID -e --accept-source-agreements -s winget | Out-String
+    $InstalledApp = & $winget list --Id $AppID -e --accept-source-agreements -s $Source | Out-String
 
     #Return if AppID exists in the list
     if ($InstalledApp -match [regex]::Escape($AppID)) {
@@ -237,15 +249,15 @@ function Confirm-Install ($AppID) {
 #Check if App exists in Winget Repository
 function Confirm-Exist ($AppID) {
     #Check is app exists in the winget repository
-    $WingetApp = & $winget show --Id $AppID -e --accept-source-agreements -s winget | Out-String
+    $WingetApp = & $winget show --Id $AppID -e --accept-source-agreements -s $Source | Out-String
 
     #Return if AppID exists
     if ($WingetApp -match [regex]::Escape($AppID)) {
-        Write-ToLog "-> $AppID exists on Winget Repository." "Cyan"
+        Write-ToLog "-> $AppID exists on Repository $Source." "Cyan"
         return $true
     }
     else {
-        Write-ToLog "-> $AppID does not exist on Winget Repository! Check spelling." "Red"
+        Write-ToLog "-> $AppID does not exist on Repository $Source! Check spelling or source parameter." "Red"
         return $false
     }
 }
@@ -321,7 +333,7 @@ function Install-App ($AppID, $AppArgs) {
 
         #Install App
         Write-ToLog "-> Installing $AppID..." "Yellow"
-        $WingetArgs = "install --id $AppID -e --accept-package-agreements --accept-source-agreements -s winget -h $AppArgs" -split " "
+        $WingetArgs = "install --id $AppID -e --accept-package-agreements --accept-source-agreements -s $Source -h $AppArgs" -split " "
         Write-ToLog "-> Running: `"$Winget`" $WingetArgs"
         & "$Winget" $WingetArgs | Where-Object { $_ -notlike "   *" } | Tee-Object -file $LogFile -Append
 
@@ -467,7 +479,47 @@ function Remove-WAUMods ($AppID) {
     }
 }
 
+#Function to check if source in present
+function Exists-Source ($Source) {
+    Write-ToLog "Check if source $Source exists" "Cyan"
+    $sources = & "$Winget" source list | Select-String -Pattern "^$Source\s"
+    $exists = $sources | Select-String -Pattern "^$Source\s"
 
+    if ($exists) {
+         Write-ToLog "-> Source $Source exists in winget" "Green"
+         return $True;
+    } else {
+         Write-ToLog "-> Source $Source is not present"
+         return $False;
+    }
+}
+
+#Function to add source
+function Add-Source ($Source, $SourceArg, $SourceType) {
+    # Check if SourceArg is defined
+    if (-not $SourceArg) {
+        Write-ToLog "-> Error: SourceArg is not defined. Source $Source could not be added!" "Red"
+        return $false
+    }
+
+    # Construct the winget command
+    $command = "& `"$Winget`" source add --name `"$Source`" --arg `"$SourceArg`" --type `"$SourceType`""
+
+    # Log the attempt to add the source
+    Write-ToLog "Attempting to add source: $Source" "Cyan"
+
+    # Execute the command and capture the output
+    $output = Invoke-Expression $command 2>&1
+
+    # Check if the command was successful
+    if ($LASTEXITCODE -eq 0) {
+        Write-ToLog "-> Source $Source added successfully" "Green"
+        return $true
+    } else {
+        Write-ToLog "-> Failed to add source $Source. Error: $output" "Red"
+        return $false
+    }
+}
 
 <# MAIN #>
 
@@ -558,6 +610,12 @@ else {
 }
 
 if ($Winget) {
+    #Check if source is present
+    if (-not (Exists-Source $Source)) {
+        Add-Source $Source $SourceArg $SourceType
+    }
+    Write-Host "`n"
+
     #Run install or uninstall for all apps
     foreach ($App_Full in $AppIDs) {
         #Split AppID and Custom arguments
