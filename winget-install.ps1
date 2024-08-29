@@ -59,8 +59,8 @@ param(
     [Parameter(Mandatory = $False)] [Switch] $WAUWhiteList,
     [Parameter(Mandatory = $False)] [Switch] $AllowUpgrade,
     [Parameter(Mandatory = $False)] [String] $Source = "winget",
-    [Parameter(Mandatory=$false)] [String] $SourceArg,
-    [Parameter(Mandatory=$false)] [String] $SourceType = "Microsoft.PreIndexed.Package"
+    [Parameter(Mandatory = $False)] [String] $SourceArg,
+    [Parameter(Mandatory = $False)] [String] $SourceType = "Microsoft.PreIndexed.Package"
 )
 
 
